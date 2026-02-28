@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>TiltCam</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@300;500;700&display=swap');
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111;
+    --border: #222;
+    --accent: #e8ff47;
+    --text: #f0f0f0;
+    --muted: #444;
+    --highlight: rgba(232,255,71,0.13);
+    --glow: 0 0 18px rgba(232,255,71,0.45), 0 0 40px rgba(232,255,71,0.15);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow Condensed', sans-serif;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+  }
+
+  .screen { display: none; flex-direction: column; height: 100dvh; }
+  .screen.active { display: flex; }
+
+  #home-screen {
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    padding: 40px;
+  }
+  .home-brand {
+    font-family: 'Space Mono', monospace;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 6px;
+    margin-bottom: 8px;
+  }
+  .home-sub {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+  }
+  .mode-btn {
+    width: 100%;
+    max-width: 320px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .mode-btn:active {
+    transform: scale(0.97);
+    border-color: var(--accent);
+    background: var(--highlight);
+    box-shadow: var(--glow);
+  }
+  .mode-btn-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 3px;
+    margin-bottom: 8px;
+  }
+  .mode-btn-desc {
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  #statusbar {
+    height: 36px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    flex-shrink: 0;
+  }
+  .brand { font-family:'Space Mono',monospace; font-size:13px; font-weight:700; color:var(--accent); letter-spacing:3px; }
+  #status-msg { font-family:'Space Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:1px; }
+  #home-btn {
+    font-family:'Space Mono',monospace;
+    font-size:10px;
+    color:var(--muted);
+    letter-spacing:1px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  #home-btn:active { color: var(--accent); border-color: var(--accent); }
+
+  #viewfinder {
+    flex: 1;
+    position: relative;
+    background: #000;
+    overflow: hidden;
+  }
+
+  #camera-feed {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+    transform-origin: center center;
+  }
+  #camera-feed.active { display: block; }
+
+  #viewfinder::before {
+    content:'';
+    position:absolute; inset:0;
+    background:
+      linear-gradient(rgba(232,255,71,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(232,255,71,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events:none;
+    z-index:2;
+  }
+
+  .bracket { position:absolute; width:26px; height:26px; border-color:var(--accent); border-style:solid; opacity:0.55; z-index:3; }
+  .bracket.tl { top:16px; left:16px; border-width:2px 0 0 2px; }
+  .bracket.tr { top:16px; right:16px; border-width:2px 2px 0 0; }
+  .bracket.bl { bottom:16px; left:16px; border-width:0 0 2px 2px; }
+  .bracket.br { bottom:16px; right:16px; border-width:0 2px 2px 0; }
+
+  #tilt-arrow {
+    position:absolute;
+    top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    font-size:36px;
+    color:var(--accent);
+    opacity:0;
+    transition: opacity 0.15s;
+    z-index:4;
+    text-shadow: 0 0 14px var(--accent);
+    pointer-events:none;
+  }
+  #tilt-arrow.visible { opacity:0.85; }
+
+  #selected-name {
+    position:absolute;
+    bottom:14px; left:50%;
+    transform:translateX(-50%);
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    letter-spacing:2px;
+    color:var(--accent);
+    text-transform:uppercase;
+    opacity:0;
+    transition:opacity 0.2s;
+    white-space:nowrap;
+    z-index:4;
+  }
+  #selected-name.show { opacity:1; }
+
+  #shake-hint {
+    position:absolute;
+    top:14px; left:50%;
+    transform:translateX(-50%);
+    font-family:'Space Mono',monospace;
+    font-size:9px;
+    letter-spacing:2px;
+    color:var(--accent);
+    background:rgba(0,0,0,0.65);
+    border:1px solid rgba(232,255,71,0.25);
+    padding:4px 12px;
+    border-radius:4px;
+    opacity:0;
+    transition:opacity 0.3s;
+    z-index:4;
+    white-space:nowrap;
+  }
+  #shake-hint.show { opacity:1; }
+
+  #countdown {
+    position:absolute;
+    top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    font-family:'Space Mono',monospace;
+    font-size:80px;
+    font-weight:700;
+    color:var(--accent);
+    text-shadow: 0 0 30px var(--accent), 0 0 70px rgba(232,255,71,0.35);
+    opacity:0;
+    z-index:5;
+    transition:opacity 0.2s;
+    pointer-events:none;
+  }
+  #countdown.show { opacity:1; }
+
+  #flash {
+    position:absolute; inset:0;
+    background:#fff;
+    opacity:0;
+    pointer-events:none;
+    z-index:6;
+  }
+  #flash.active { opacity:0.85; transition:none; }
+  #flash.fade   { opacity:0; transition:opacity 0.4s; }
+
+  #photo-preview {
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    object-fit:cover;
+    opacity:0;
+    z-index:7;
+    transition:opacity 0.3s;
+  }
+  #photo-preview.show { opacity:1; }
+
+  #preview-label {
+    position:absolute;
+    bottom:20px; left:50%;
+    transform:translateX(-50%);
+    font-family:'Space Mono',monospace;
+    font-size:10px;
+    letter-spacing:2px;
+    color:var(--accent);
+    background:rgba(0,0,0,0.75);
+    border:1px solid rgba(232,255,71,0.3);
+    padding:5px 14px;
+    border-radius:4px;
+    z-index:8;
+    opacity:0;
+    transition:opacity 0.3s;
+    white-space:nowrap;
+  }
+  #preview-label.show { opacity:1; }
+
+  #feedback-log {
+    position:absolute;
+    top:44px; right:12px;
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+    align-items:flex-end;
+    pointer-events:none;
+    z-index:4;
+  }
+  .log-entry {
+    font-family:'Space Mono',monospace;
+    font-size:9px;
+    letter-spacing:1px;
+    color:var(--accent);
+    background:rgba(0,0,0,0.75);
+    border:1px solid rgba(232,255,71,0.2);
+    padding:3px 8px;
+    border-radius:3px;
+    animation:fadeLog 2.5s forwards;
+  }
+  @keyframes fadeLog {
+    0%   { opacity:0; transform:translateX(8px); }
+    15%  { opacity:1; transform:translateX(0); }
+    70%  { opacity:1; }
+    100% { opacity:0; }
+  }
+
+  #controls {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 10px 12px 16px;
+    flex-shrink: 0;
+  }
+  .controls-label {
+    font-family:'Space Mono',monospace;
+    font-size:9px;
+    letter-spacing:2px;
+    color:var(--muted);
+    text-transform:uppercase;
+    margin-bottom:8px;
+    text-align:center;
+  }
+  #selector-track {
+    display:flex;
+    gap:6px;
+  }
+  .ctrl-btn {
+    flex:1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius:8px;
+    padding:9px 3px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:4px;
+    transition: all 0.25s ease;
+  }
+  .ctrl-btn .lbl {
+    font-size:8px;
+    letter-spacing:1px;
+    color:var(--muted);
+    text-transform:uppercase;
+    text-align:center;
+    line-height:1.2;
+    transition:color 0.2s;
+  }
+  .ctrl-btn.selected {
+    border-color:var(--accent);
+    background:var(--highlight);
+    box-shadow:var(--glow);
+    transform:translateY(-3px);
+  }
+  .ctrl-btn.selected .lbl { color:var(--accent); }
+  .ctrl-btn.fired {
+    background:var(--accent);
+    border-color:var(--accent);
+    transform:scale(0.93) translateY(-3px);
+  }
+  .ctrl-btn.fired .lbl { color:#000; }
+
+  .touch-mode .ctrl-btn { cursor: pointer; }
+  .touch-mode .ctrl-btn:active {
+    background: var(--accent);
+    border-color: var(--accent);
+    transform: scale(0.93);
+  }
+  .touch-mode .ctrl-btn:active .lbl { color: #000; }
+
+  #tilt-bar-wrap {
+    margin-top:8px;
+    height:2px;
+    background:var(--border);
+    border-radius:2px;
+    position:relative;
+  }
+  #tilt-cursor {
+    position:absolute;
+    top:50%;
+    width:10px; height:10px;
+    background:var(--accent);
+    border-radius:50%;
+    transform:translate(-50%,-50%);
+    box-shadow:0 0 6px var(--accent);
+    transition:left 0.12s ease-out;
+    left:0%;
+  }
+
+  #permission-overlay {
+    position:fixed; inset:0;
+    background:rgba(0,0,0,0.95);
+    display:none;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:18px;
+    z-index:100;
+    padding:32px;
+    text-align:center;
+  }
+  #permission-overlay.show { display:flex; }
+  #permission-overlay h2 {
+    font-family:'Space Mono',monospace;
+    font-size:20px;
+    color:var(--accent);
+    letter-spacing:4px;
+  }
+  #permission-overlay p {
+    font-size:15px;
+    color:#888;
+    line-height:1.8;
+  }
+  #permission-overlay p strong { color:var(--text); }
+  #grant-btn {
+    background:var(--accent);
+    color:#000;
+    border:none;
+    padding:14px 36px;
+    font-family:'Space Mono',monospace;
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:2px;
+    border-radius:6px;
+    cursor:pointer;
+    text-transform:uppercase;
+    margin-top:6px;
+  }
+</style>
+</head>
+<body>
+
+<div id="home-screen" class="screen active">
+  <div class="home-brand">TILTCAM</div>
+  <div class="home-sub">Select a mode to begin</div>
+  <div class="mode-btn" onclick="launchMode('tilt')">
+    <div class="mode-btn-title">TILT MODE</div>
+    <div class="mode-btn-desc">Browse with tilt · Activate by tilting back</div>
+  </div>
+  <div class="mode-btn" onclick="launchMode('touch')">
+    <div class="mode-btn-title">TOUCH MODE</div>
+    <div class="mode-btn-desc">Tap buttons directly to activate</div>
+  </div>
+</div>
+
+<div id="camera-screen" class="screen">
+
+  <div id="permission-overlay">
+    <h2>TILTCAM</h2>
+    <p id="overlay-text"></p>
+    <button id="grant-btn" onclick="requestPermissions()">START CAMERA</button>
+  </div>
+
+  <div id="statusbar">
+    <button id="home-btn" onclick="goHome()">Home</button>
+    <span id="status-msg">WAITING</span>
+    <span class="brand">TILTCAM</span>
+  </div>
+
+  <div id="viewfinder">
+    <video id="camera-feed" autoplay playsinline muted></video>
+    <canvas id="capture-canvas" style="display:none"></canvas>
+    <img id="photo-preview" alt="">
+
+    <div class="bracket tl"></div>
+    <div class="bracket tr"></div>
+    <div class="bracket bl"></div>
+    <div class="bracket br"></div>
+
+    <div id="tilt-arrow">></div>
+    <div id="shake-hint"></div>
+    <div id="selected-name"></div>
+    <div id="countdown"></div>
+    <div id="feedback-log"></div>
+    <div id="preview-label">SAVED - SHAKE TO DISMISS</div>
+    <div id="flash"></div>
+  </div>
+
+  <div id="controls">
+    <div class="controls-label" id="controls-label"></div>
+    <div id="selector-track">
+      <div class="ctrl-btn selected" data-index="0" data-action="capture">
+        <span class="lbl">Capture</span>
+      </div>
+      <div class="ctrl-btn" data-index="1" data-action="flip">
+        <span class="lbl">Flip</span>
+      </div>
+      <div class="ctrl-btn" data-index="2" data-action="flash-toggle">
+        <span class="lbl">Flash</span>
+      </div>
+      <div class="ctrl-btn" data-index="3" data-action="zoom-in">
+        <span class="lbl">Zoom In</span>
+      </div>
+      <div class="ctrl-btn" data-index="4" data-action="zoom-out">
+        <span class="lbl">Zoom Out</span>
+      </div>
+    </div>
+    <div id="tilt-bar-wrap">
+      <div id="tilt-cursor"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TILT_SENSITIVITY   = 0.005;
+const TILT_DEADZONE      = 10;
+const BACK_TILT_ACTIVATE = 20;
+const ACTIVATE_COOLDOWN  = 1500;
+const SHAKE_THRESHOLD    = 16;
+const SHAKE_COOLDOWN     = 1300;
+const CAPTURE_DELAY      = 3;
+
+const BUTTONS = ['capture','flip','flash-toggle','zoom-in','zoom-out'];
+const LABELS  = {
+  'capture':'CAPTURE', 'flip':'FLIP CAM',
+  'flash-toggle':'FLASH', 'zoom-in':'ZOOM IN', 'zoom-out':'ZOOM OUT'
+};
+
+let currentMode        = null;
+let selectorPos        = 0;
+let selectedIndex      = 0;
+let lastGamma          = 0;
+let lastBeta           = 0;
+let restBeta           = null;
+let lastShakeTime      = 0;
+let lastActivateTime   = 0;
+let tiltActivated      = false;
+let cameraStream       = null;
+let facingMode         = 'environment';
+let zoomLevel          = 1;
+let flashOn            = false;
+let countingDown       = false;
+let showingPreview     = false;
+let orientationStarted = false;
+let tiltLoopRunning    = false;
+
+function launchMode(mode) {
+  currentMode = mode;
+
+  selectorPos        = 0;
+  selectedIndex      = 0;
+  restBeta           = null;
+  orientationStarted = false;
+  flashOn            = false;
+  zoomLevel          = 1;
+  facingMode         = 'environment';
+
+  document.querySelectorAll('.ctrl-btn').forEach((b, i) =>
+    b.classList.toggle('selected', i === 0)
+  );
+  document.getElementById('tilt-cursor').style.left = '0%';
+  document.getElementById('selected-name').classList.remove('show');
+  document.getElementById('shake-hint').classList.remove('show');
+
+  const controls = document.getElementById('controls');
+  const label    = document.getElementById('controls-label');
+  const hint     = document.getElementById('shake-hint');
+  const tiltBar  = document.getElementById('tilt-bar-wrap');
+
+  if (mode === 'tilt') {
+    controls.classList.remove('touch-mode');
+    label.textContent = '< gentle tilt to browse · tilt back to activate >';
+    hint.textContent  = 'TILT BACK TO ACTIVATE';
+    tiltBar.style.display = 'block';
+    document.getElementById('overlay-text').innerHTML =
+      '<strong>Gentle tilt left / right</strong> to browse controls.<br><strong>Tilt back</strong> (top toward you) to activate.';
+    detachTouchHandlers();
+  } else {
+    controls.classList.add('touch-mode');
+    label.textContent = 'Tap a button to activate';
+    hint.textContent  = '';
+    tiltBar.style.display = 'none';
+    document.getElementById('overlay-text').innerHTML =
+      '<strong>Tap any button</strong> at the bottom to activate it.';
+    attachTouchHandlers();
+  }
+
+  document.getElementById('home-screen').classList.remove('active');
+  document.getElementById('camera-screen').classList.add('active');
+  document.getElementById('permission-overlay').classList.add('show');
+}
+
+function goHome() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+
+  tiltLoopRunning = false;
+
+  window.removeEventListener('deviceorientation', handleOrientation, true);
+  window.removeEventListener('devicemotion',      handleMotion,      true);
+
+  const vid = document.getElementById('camera-feed');
+  vid.srcObject = null;
+  vid.classList.remove('active');
+
+  dismissPreview();
+  document.getElementById('countdown').classList.remove('show');
+  countingDown   = false;
+  showingPreview = false;
+
+  document.getElementById('camera-screen').classList.remove('active');
+  document.getElementById('home-screen').classList.add('active');
+  currentMode = null;
+}
+
+async function requestPermissions() {
+  try {
+    await startCamera();
+  } catch(e) {
+    addLog('Camera denied');
+  }
+
+  for (const Evt of [DeviceMotionEvent, DeviceOrientationEvent]) {
+    if (Evt && typeof Evt.requestPermission === 'function') {
+      try { await Evt.requestPermission(); } catch(e) {}
+    }
+  }
+
+  if (currentMode === 'tilt') {
+    window.addEventListener('deviceorientation', handleOrientation, true);
+    window.addEventListener('devicemotion',      handleMotion,      true);
+    tiltLoopRunning = true;
+    runTiltLoop();
+  } else {
+    window.addEventListener('devicemotion', handleMotion, true);
+  }
+
+  document.getElementById('permission-overlay').classList.remove('show');
+
+  if (currentMode === 'tilt') {
+    setStatus('TILT LEFT/RIGHT TO SELECT');
+    updateSelection(0);
+  } else {
+    setStatus('TAP A BUTTON TO ACTIVATE');
+    updateSelection(0);
+  }
+}
+
+async function startCamera() {
+  if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
+  cameraStream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode },
+    audio: false
+  });
+  const vid = document.getElementById('camera-feed');
+  vid.srcObject = cameraStream;
+  vid.classList.add('active');
+  applyTorch();
+}
+
+function capturePhoto() {
+  const vid    = document.getElementById('camera-feed');
+  const canvas = document.getElementById('capture-canvas');
+  canvas.width  = vid.videoWidth  || 640;
+  canvas.height = vid.videoHeight || 480;
+  canvas.getContext('2d').drawImage(vid, 0, 0);
+
+  const fl = document.getElementById('flash');
+  fl.classList.remove('fade');
+  fl.classList.add('active');
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    fl.classList.remove('active');
+    fl.classList.add('fade');
+  }));
+
+  const img = document.getElementById('photo-preview');
+  img.src = canvas.toDataURL('image/jpeg', 0.92);
+  img.classList.add('show');
+  document.getElementById('preview-label').classList.add('show');
+  showingPreview = true;
+  addLog('PHOTO TAKEN');
+  setTimeout(() => dismissPreview(), 4000);
+}
+
+function dismissPreview() {
+  document.getElementById('photo-preview').classList.remove('show');
+  document.getElementById('preview-label').classList.remove('show');
+  showingPreview = false;
+  if (currentMode === 'tilt') {
+    setStatus('TILT LEFT/RIGHT TO SELECT');
+  } else {
+    setStatus('TAP A BUTTON TO ACTIVATE');
+  }
+}
+
+function attachTouchHandlers() {
+  document.querySelectorAll('.ctrl-btn').forEach(btn => {
+    btn.addEventListener('click', handleTouchActivate);
+  });
+}
+
+function detachTouchHandlers() {
+  document.querySelectorAll('.ctrl-btn').forEach(btn => {
+    btn.removeEventListener('click', handleTouchActivate);
+  });
+}
+
+function handleTouchActivate(e) {
+  if (currentMode !== 'touch') return;
+  const btn    = e.currentTarget;
+  const action = btn.dataset.action;
+  btn.classList.add('fired');
+  setTimeout(() => btn.classList.remove('fired'), 360);
+  addLog('TAP - ' + LABELS[action]);
+  executeAction(action);
+}
+
+function handleOrientation(e) {
+  if (currentMode !== 'tilt') return;
+  lastGamma = e.gamma || 0;
+  lastBeta  = e.beta  || 0;
+
+  if (restBeta === null) restBeta = lastBeta;
+
+  orientationStarted = true;
+
+  const arrow = document.getElementById('tilt-arrow');
+  if (Math.abs(lastGamma) > TILT_DEADZONE + 3) {
+    arrow.textContent = lastGamma > 0 ? '>' : '<';
+    arrow.classList.add('visible');
+  } else {
+    arrow.classList.remove('visible');
+  }
+}
+
+function runTiltLoop() {
+  if (!tiltLoopRunning) return;
+  if (currentMode === 'tilt' && orientationStarted && !countingDown) {
+    const g        = lastGamma;
+    const absG     = Math.abs(g);
+    const backTilt = lastBeta - restBeta;
+
+    if (backTilt >= BACK_TILT_ACTIVATE) {
+      const now = Date.now();
+      if (!tiltActivated && now - lastActivateTime > ACTIVATE_COOLDOWN) {
+        tiltActivated    = true;
+        lastActivateTime = now;
+        activateSelected();
+      }
+    } else {
+      tiltActivated = false;
+      if (absG > TILT_DEADZONE) {
+        const dir   = g > 0 ? 1 : -1;
+        const speed = (absG - TILT_DEADZONE) * TILT_SENSITIVITY;
+        selectorPos = Math.max(0, Math.min(BUTTONS.length - 1, selectorPos + dir * speed));
+
+        const pct = (selectorPos / (BUTTONS.length - 1)) * 100;
+        document.getElementById('tilt-cursor').style.left = pct + '%';
+
+        const newIdx = Math.round(selectorPos);
+        if (newIdx !== selectedIndex) updateSelection(newIdx);
+      }
+    }
+  }
+  setTimeout(runTiltLoop, 50);
+}
+
+function handleMotion(e) {
+  if (!showingPreview) return;
+  const ag = e.accelerationIncludingGravity;
+  if (!ag) return;
+  const mag = Math.sqrt(ag.x**2 + ag.y**2 + ag.z**2);
+  const now = Date.now();
+  if (mag > SHAKE_THRESHOLD && now - lastShakeTime > SHAKE_COOLDOWN) {
+    lastShakeTime = now;
+    dismissPreview();
+  }
+}
+
+function updateSelection(index) {
+  selectedIndex = index;
+  document.querySelectorAll('.ctrl-btn').forEach((b, i) =>
+    b.classList.toggle('selected', i === index)
+  );
+  if (currentMode === 'tilt') {
+    const nameEl = document.getElementById('selected-name');
+    nameEl.textContent = '> ' + LABELS[BUTTONS[index]];
+    nameEl.classList.add('show');
+    document.getElementById('shake-hint').classList.add('show');
+    setStatus(LABELS[BUTTONS[index]] + ' - TILT BACK TO ACTIVATE');
+  }
+}
+
+function activateSelected() {
+  const action = BUTTONS[selectedIndex];
+  const btn    = document.querySelector(`[data-index="${selectedIndex}"]`);
+  btn.classList.add('fired');
+  setTimeout(() => btn.classList.remove('fired'), 360);
+  addLog('TILT - ' + LABELS[action]);
+  executeAction(action);
+}
+
+function executeAction(action) {
+  switch(action) {
+    case 'capture':      startCaptureCountdown(); break;
+    case 'flip':         flipCamera();            break;
+    case 'flash-toggle': toggleFlash();           break;
+    case 'zoom-in':      adjustZoom(+0.5);        break;
+    case 'zoom-out':     adjustZoom(-0.5);        break;
+  }
+}
+
+function startCaptureCountdown() {
+  if (countingDown) return;
+  countingDown = true;
+  let n  = CAPTURE_DELAY;
+  const el = document.getElementById('countdown');
+  el.textContent = n;
+  el.classList.add('show');
+  setStatus('CAPTURING IN ' + n + '...');
+
+  const tick = setInterval(() => {
+    n--;
+    if (n > 0) {
+      el.textContent = n;
+      setStatus('CAPTURING IN ' + n + '...');
+    } else {
+      clearInterval(tick);
+      el.classList.remove('show');
+      capturePhoto();
+      countingDown = false;
+    }
+  }, 1000);
+}
+
+async function flipCamera() {
+  facingMode = facingMode === 'environment' ? 'user' : 'environment';
+  addLog('FLIPPED');
+  try { await startCamera(); } catch(e) { addLog('Flip failed'); }
+}
+
+function applyTorch() {
+  if (!cameraStream) return;
+  const track = cameraStream.getVideoTracks()[0];
+  if (!track) return;
+  track.applyConstraints({ advanced:[{ torch: flashOn }] }).catch(()=>{});
+}
+
+function toggleFlash() {
+  flashOn = !flashOn;
+  document.querySelector('[data-action="flash-toggle"] .lbl').textContent = flashOn ? 'Flash ON' : 'Flash';
+  addLog(flashOn ? 'FLASH ON' : 'FLASH OFF');
+  applyTorch();
+}
+
+function adjustZoom(delta) {
+  zoomLevel = Math.max(1, Math.min(5, zoomLevel + delta));
+  addLog('ZOOM ' + zoomLevel.toFixed(1) + 'x');
+  document.getElementById('camera-feed').style.transform = `scale(${zoomLevel})`;
+  if (cameraStream) {
+    const track = cameraStream.getVideoTracks()[0];
+    const caps  = track?.getCapabilities?.();
+    if (caps?.zoom) {
+      const z = Math.min(caps.zoom.max, Math.max(caps.zoom.min, zoomLevel));
+      track.applyConstraints({ advanced:[{ zoom: z }] }).catch(()=>{});
+    }
+  }
+}
+
+function setStatus(msg) {
+  document.getElementById('status-msg').textContent = msg;
+}
+
+function addLog(text) {
+  const log = document.getElementById('feedback-log');
+  const e   = document.createElement('div');
+  e.className = 'log-entry';
+  e.textContent = text;
+  log.appendChild(e);
+  setTimeout(() => e.remove(), 2600);
+}
+</script>
+</body>
+</html>
